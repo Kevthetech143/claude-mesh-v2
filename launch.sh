@@ -16,9 +16,17 @@ echo ""
 
 FAIL=0
 
+# Resolve claude's full path (tmux shells often miss PATH additions)
+CLAUDE_BIN="$(command -v claude 2>/dev/null)"
+
 # Dependency checks
 python3 -c "import flask" 2>/dev/null && echo "  [OK] Flask" || { echo "  [FAIL] Flask"; FAIL=1; }
-command -v claude &>/dev/null && echo "  [OK] claude CLI" || { echo "  [FAIL] claude CLI"; FAIL=1; }
+if [ -n "$CLAUDE_BIN" ]; then
+    echo "  [OK] claude CLI ($CLAUDE_BIN)"
+else
+    echo "  [FAIL] claude CLI not found in PATH"
+    FAIL=1
+fi
 command -v expect &>/dev/null && echo "  [OK] expect" || { echo "  [FAIL] expect"; FAIL=1; }
 command -v tmux &>/dev/null && echo "  [OK] tmux" || { echo "  [FAIL] tmux"; FAIL=1; }
 
@@ -78,15 +86,30 @@ echo ""
 echo "  Launching Claude sessions..."
 
 tmux new-session -d -s alpha -x 200 -y 50
-tmux send-keys -t alpha "claude --dangerously-skip-permissions" Enter
+tmux send-keys -t alpha "$CLAUDE_BIN --dangerously-skip-permissions" Enter
 
 tmux new-session -d -s beta -x 200 -y 50
-tmux send-keys -t beta "claude --dangerously-skip-permissions" Enter
+tmux send-keys -t beta "$CLAUDE_BIN --dangerously-skip-permissions" Enter
 
 echo "  [OK] ALPHA launching..."
 echo "  [OK] BETA launching..."
-echo "  Waiting 20s for Claude to boot..."
-sleep 20
+
+# Wait for Claude to actually start (check for prompt, up to 60s)
+echo "  Waiting for Claude to boot..."
+for i in $(seq 1 30); do
+    ALPHA_UP=$(tmux capture-pane -t alpha -p 2>/dev/null | grep -c "❯\|>\|claude")
+    BETA_UP=$(tmux capture-pane -t beta -p 2>/dev/null | grep -c "❯\|>\|claude")
+    if [ "$ALPHA_UP" -gt 0 ] && [ "$BETA_UP" -gt 0 ]; then
+        echo "  [OK] Both sessions ready (${i}s)"
+        break
+    fi
+    if [ "$i" -eq 30 ]; then
+        echo "  [WARN] Timed out waiting — sessions may not have started"
+        echo "  Check: tmux attach -t alpha"
+    fi
+    sleep 2
+done
+sleep 3
 
 # ── Inject prompts ──
 echo "  Injecting ALPHA instructions..."
