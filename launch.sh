@@ -85,11 +85,12 @@ curl -s "http://localhost:$BETA_PORT/api/latest" > /dev/null 2>&1 \
 echo ""
 echo "  Launching Claude sessions..."
 
+# Unset CLAUDECODE so tmux sessions don't think they're nested inside Claude
 tmux new-session -d -s alpha -x 200 -y 50
-tmux send-keys -t alpha "$CLAUDE_BIN --dangerously-skip-permissions" Enter
+tmux send-keys -t alpha "unset CLAUDECODE && $CLAUDE_BIN --dangerously-skip-permissions" Enter
 
 tmux new-session -d -s beta -x 200 -y 50
-tmux send-keys -t beta "$CLAUDE_BIN --dangerously-skip-permissions" Enter
+tmux send-keys -t beta "unset CLAUDECODE && $CLAUDE_BIN --dangerously-skip-permissions" Enter
 
 echo "  [OK] ALPHA launching..."
 echo "  [OK] BETA launching..."

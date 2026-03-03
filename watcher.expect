@@ -1,4 +1,4 @@
-#!/usr/bin/expect -f
+#!/usr/bin/env expect
 # Claude Mesh — Inbox watcher for a single agent.
 #
 # Usage:

@@ -9,8 +9,9 @@ echo "  CLAUDE MESH — INSTALLER"
 echo "  ========================"
 echo ""
 
-# Detect package manager
-if [[ "$(uname)" == "Darwin" ]]; then
+# Detect OS and package manager
+OS="$(uname)"
+if [[ "$OS" == "Darwin" ]]; then
     PKG="brew"
     if ! command -v brew &>/dev/null; then
         echo "  [WARN] Homebrew not found. Installing..."
@@ -37,12 +38,32 @@ install_if_missing() {
     fi
 }
 
-# Python + Flask
-if python3 -c "import flask" 2>/dev/null; then
+# Python — try python3 first, fall back to python
+PYTHON_BIN=""
+if command -v python3 &>/dev/null; then
+    PYTHON_BIN="python3"
+elif command -v python &>/dev/null; then
+    PYTHON_BIN="python"
+else
+    echo "  [FAIL] Python not found"
+    install_if_missing python3 python3 python3
+    PYTHON_BIN="python3"
+fi
+echo "  [OK] Python ($PYTHON_BIN)"
+
+# Flask
+if $PYTHON_BIN -c "import flask" 2>/dev/null; then
     echo "  [OK] Flask"
 else
     echo "  [..] Installing Flask..."
-    pip3 install flask 2>/dev/null && echo "  [OK] Flask installed" || echo "  [FAIL] Flask — run: pip3 install flask"
+    # Try pip3, pip, then python -m pip
+    if command -v pip3 &>/dev/null; then
+        pip3 install flask 2>/dev/null && echo "  [OK] Flask installed"
+    elif command -v pip &>/dev/null; then
+        pip install flask 2>/dev/null && echo "  [OK] Flask installed"
+    else
+        $PYTHON_BIN -m pip install flask 2>/dev/null && echo "  [OK] Flask installed" || echo "  [FAIL] Flask — run: pip install flask"
+    fi
 fi
 
 # Claude CLI (just check, don't install)
@@ -52,6 +73,7 @@ command -v claude &>/dev/null && echo "  [OK] claude CLI" || echo "  [!!] claude
 install_if_missing tmux tmux tmux
 install_if_missing expect expect expect
 install_if_missing curl curl curl
+install_if_missing lsof lsof lsof
 
 echo ""
 
@@ -62,6 +84,15 @@ echo "  [OK] runtime/ directory ready"
 # Make scripts executable
 chmod +x "$MESH_DIR/launch.sh" "$MESH_DIR/cleanup.sh" "$MESH_DIR/control.sh" "$MESH_DIR/watcher.expect" 2>/dev/null
 echo "  [OK] Scripts marked executable"
+
+# Fix expect shebang for portability (use env lookup)
+if [[ "$OS" != "Darwin" ]]; then
+    EXPECT_PATH="$(command -v expect 2>/dev/null)"
+    if [ -n "$EXPECT_PATH" ] && [ "$EXPECT_PATH" != "/usr/bin/expect" ]; then
+        sed -i "1s|.*|#!${EXPECT_PATH} -f|" "$MESH_DIR/watcher.expect" 2>/dev/null
+        echo "  [OK] Fixed expect shebang to $EXPECT_PATH"
+    fi
+fi
 
 # Copy mesh-sync skill to user's Claude skills dir
 SKILL_SRC="$MESH_DIR/skills/mesh-sync/SKILL.md"
