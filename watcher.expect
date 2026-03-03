@@ -1,0 +1,40 @@
+#!/usr/bin/expect -f
+# Claude Mesh — Inbox watcher for a single agent.
+#
+# Usage:
+#   ./watcher.expect <port> <tmux_target> <sender_name> <runtime_dir>
+#
+# Example:
+#   ./watcher.expect 9997 alpha BETA ./runtime
+
+set PORT [lindex $argv 0]
+set TMUX_TARGET [lindex $argv 1]
+set SENDER [lindex $argv 2]
+set RUNTIME_DIR [lindex $argv 3]
+
+set INBOX "http://127.0.0.1:$PORT/api/latest"
+set MSG_FILE "$RUNTIME_DIR/msg-for-$TMUX_TARGET.json"
+set LAST_CHECK "$RUNTIME_DIR/last-check-$TMUX_TARGET"
+
+exec echo "{}" > $LAST_CHECK
+
+while {1} {
+    catch {exec curl -s $INBOX -o $MSG_FILE 2>/dev/null}
+    if {[file exists $MSG_FILE]} {
+        set changed [catch {exec cmp -s $MSG_FILE $LAST_CHECK}]
+        if {$changed} {
+            catch {exec cat $MSG_FILE} content
+            if {[string length $content] > 5} {
+                catch {exec cp $MSG_FILE $LAST_CHECK}
+                puts ">>> $TMUX_TARGET: New message detected! Injecting..."
+                sleep 5
+                spawn tmux send-keys -t $TMUX_TARGET "$SENDER sent you a message. Check your inbox: curl -s http://localhost:$PORT/api/all"
+                expect eof
+                sleep 1
+                spawn tmux send-keys -t $TMUX_TARGET Enter
+                expect eof
+            }
+        }
+    }
+    sleep 3
+}
