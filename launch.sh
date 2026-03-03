@@ -81,59 +81,23 @@ curl -s "http://localhost:$BETA_PORT/api/latest" > /dev/null 2>&1 \
     && echo "  [OK] BETA inbox on $BETA_PORT" \
     || { echo "  [FAIL] BETA server"; exit 1; }
 
-# ── Claude sessions in tmux ──
+# ── Claude sessions in tmux with prompt as CLI argument ──
 echo ""
-echo "  Launching Claude sessions..."
+echo "  Launching Claude sessions with prompts..."
 
-# Unset CLAUDECODE so tmux sessions don't think they're nested inside Claude
+# Pass the initial prompt directly as a CLI argument — no send-keys timing issues
+ALPHA_PROMPT="Read and follow the instructions in $PROMPTS/alpha.txt"
+BETA_PROMPT="Read and follow the instructions in $PROMPTS/beta.txt"
+
 tmux new-session -d -s alpha -x 200 -y 50
-tmux send-keys -t alpha "unset CLAUDECODE && $CLAUDE_BIN --dangerously-skip-permissions" Enter
+tmux send-keys -t alpha "unset CLAUDECODE && $CLAUDE_BIN --dangerously-skip-permissions \"$ALPHA_PROMPT\"" Enter
 
 tmux new-session -d -s beta -x 200 -y 50
-tmux send-keys -t beta "unset CLAUDECODE && $CLAUDE_BIN --dangerously-skip-permissions" Enter
+tmux send-keys -t beta "unset CLAUDECODE && $CLAUDE_BIN --dangerously-skip-permissions \"$BETA_PROMPT\"" Enter
 
-echo "  [OK] ALPHA launching..."
-echo "  [OK] BETA launching..."
-
-# Wait for Claude's input prompt (❯) — means REPL is actually accepting input
-# Skip first 15s to avoid matching the echoed command text
-echo "  Waiting for Claude to boot (this takes 20-40s)..."
-sleep 15
-
-ALPHA_READY=0
-BETA_READY=0
-for i in $(seq 1 30); do
-    if [ "$ALPHA_READY" -eq 0 ]; then
-        # Look for ❯ on a line by itself (Claude's actual input prompt)
-        tmux capture-pane -t alpha -p 2>/dev/null | grep -q "❯" && ALPHA_READY=1
-    fi
-    if [ "$BETA_READY" -eq 0 ]; then
-        tmux capture-pane -t beta -p 2>/dev/null | grep -q "❯" && BETA_READY=1
-    fi
-    if [ "$ALPHA_READY" -eq 1 ] && [ "$BETA_READY" -eq 1 ]; then
-        echo "  [OK] Both sessions ready ($((15 + i*2))s)"
-        break
-    fi
-    if [ "$i" -eq 30 ]; then
-        echo "  [WARN] Timed out after 75s"
-        [ "$ALPHA_READY" -eq 0 ] && echo "    ALPHA not ready — check: tmux attach -t alpha"
-        [ "$BETA_READY" -eq 0 ] && echo "    BETA not ready — check: tmux attach -t beta"
-    fi
-    sleep 2
-done
-
-# Extra buffer to make sure input field is fully interactive
-sleep 5
-
-# ── Inject prompts (tell Claude to read the file, not paste the whole thing) ──
-echo "  Injecting ALPHA instructions..."
-tmux send-keys -t alpha "Read and follow the instructions in $PROMPTS/alpha.txt" Enter
-
-# Wait for ALPHA to start processing before sending to BETA
-sleep 5
-
-echo "  Injecting BETA instructions..."
-tmux send-keys -t beta "Read and follow the instructions in $PROMPTS/beta.txt" Enter
+echo "  [OK] ALPHA launching with prompt..."
+echo "  [OK] BETA launching with prompt..."
+echo "  Claude will boot and immediately process the prompt — no injection needed."
 
 # ── Watchers ──
 echo ""
