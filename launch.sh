@@ -94,33 +94,38 @@ tmux send-keys -t beta "$CLAUDE_BIN --dangerously-skip-permissions" Enter
 echo "  [OK] ALPHA launching..."
 echo "  [OK] BETA launching..."
 
-# Wait for Claude to actually start (check for prompt, up to 60s)
+# Wait for Claude REPL to actually be ready (look for its prompt markers)
 echo "  Waiting for Claude to boot..."
-for i in $(seq 1 30); do
-    ALPHA_UP=$(tmux capture-pane -t alpha -p 2>/dev/null | grep -c "❯\|>\|claude")
-    BETA_UP=$(tmux capture-pane -t beta -p 2>/dev/null | grep -c "❯\|>\|claude")
-    if [ "$ALPHA_UP" -gt 0 ] && [ "$BETA_UP" -gt 0 ]; then
-        echo "  [OK] Both sessions ready (${i}s)"
+ALPHA_READY=0
+BETA_READY=0
+for i in $(seq 1 45); do
+    if [ "$ALPHA_READY" -eq 0 ]; then
+        tmux capture-pane -t alpha -p 2>/dev/null | grep -qE "╰─|❯.*\$|bypass permissions" && ALPHA_READY=1
+    fi
+    if [ "$BETA_READY" -eq 0 ]; then
+        tmux capture-pane -t beta -p 2>/dev/null | grep -qE "╰─|❯.*\$|bypass permissions" && BETA_READY=1
+    fi
+    if [ "$ALPHA_READY" -eq 1 ] && [ "$BETA_READY" -eq 1 ]; then
+        echo "  [OK] Both sessions ready ($((i*2))s)"
         break
     fi
-    if [ "$i" -eq 30 ]; then
-        echo "  [WARN] Timed out waiting — sessions may not have started"
-        echo "  Check: tmux attach -t alpha"
+    if [ "$i" -eq 45 ]; then
+        echo "  [WARN] Timed out after 90s"
+        [ "$ALPHA_READY" -eq 0 ] && echo "    ALPHA not ready — check: tmux attach -t alpha"
+        [ "$BETA_READY" -eq 0 ] && echo "    BETA not ready — check: tmux attach -t beta"
     fi
     sleep 2
 done
+sleep 2
+
+# ── Inject prompts (tell Claude to read the file, not paste the whole thing) ──
+echo "  Injecting ALPHA instructions..."
+tmux send-keys -t alpha "Read and follow the instructions in $PROMPTS/alpha.txt" Enter
+
 sleep 3
 
-# ── Inject prompts ──
-echo "  Injecting ALPHA instructions..."
-tmux send-keys -t alpha "$(cat "$PROMPTS/alpha.txt")"
-sleep 2
-tmux send-keys -t alpha Enter
-
 echo "  Injecting BETA instructions..."
-tmux send-keys -t beta "$(cat "$PROMPTS/beta.txt")"
-sleep 2
-tmux send-keys -t beta Enter
+tmux send-keys -t beta "Read and follow the instructions in $PROMPTS/beta.txt" Enter
 
 # ── Watchers ──
 echo ""
